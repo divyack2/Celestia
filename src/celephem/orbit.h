@@ -76,6 +76,7 @@ public:
     // Compute the orbit for a specified Julian date
     Eigen::Vector3d positionAtTime(double) const override;
     Eigen::Vector3d velocityAtTime(double) const override;
+    std::pair<Eigen::Vector3d, Eigen::Vector3d> computeStateAtTime(double t) const;
     double getPeriod() const override;
     double getBoundingRadius() const override;
 
@@ -83,7 +84,7 @@ private:
     double eccentricAnomaly(double) const;
     Eigen::Vector3d positionAtE(double) const;
     Eigen::Vector3d velocityAtE(double, double) const;
-
+    
     double semiMajorAxis;
     double semiMinorAxis;
     double eccentricity;
@@ -104,6 +105,7 @@ public:
     // Compute the orbit for a specified Julian date
     Eigen::Vector3d positionAtTime(double) const override;
     Eigen::Vector3d velocityAtTime(double) const override;
+    std::pair<Eigen::Vector3d, Eigen::Vector3d> computeStateAtTime(double t) const;
     double getPeriod() const override;
     double getBoundingRadius() const override;
     bool isPeriodic() const override;

@@ -178,6 +178,16 @@ void Orbit::sample(double startTime, double endTime, OrbitSampleProc& proc) cons
     adaptiveSample(startTime, endTime, proc, samplingParams);
 }
 
+inline void tryComputeState(const Orbit* orbit, double t, Eigen::Vector3d& pos, Eigen::Vector3d& vel) {
+    if (const auto* ellip = dynamic_cast<const EllipticalOrbit*>(orbit)) {
+        std::tie(pos, vel) = ellip->computeStateAtTime(t);
+    } else if (const auto* hyp = dynamic_cast<const HyperbolicOrbit*>(orbit)) {
+        std::tie(pos, vel) = hyp->computeStateAtTime(t);
+    } else {
+        pos = orbit->positionAtTime(t);
+        vel = orbit->velocityAtTime(t);
+    }
+}
 
 /** Adaptively sample the orbit over the range [ startTime, endTime ].
   */
@@ -190,9 +200,13 @@ void Orbit::adaptiveSample(double startTime, double endTime, OrbitSampleProc& pr
     double t = startTime;
     const double stepFactor = 1.25;
 
-    Eigen::Vector3d lastP = positionAtTime(t);
-    Eigen::Vector3d lastV = velocityAtTime(t);
+    // Eigen::Vector3d lastP = positionAtTime(t);
+    // Eigen::Vector3d lastV = velocityAtTime(t);
+
+    Eigen::Vector3d lastP, lastV;
+    tryComputeState(this, t, lastP, lastV);
     proc.sample(t, lastP, lastV);
+
 
     while (t < endTime)
     {
@@ -200,8 +214,10 @@ void Orbit::adaptiveSample(double startTime, double endTime, OrbitSampleProc& pr
         maxStepSize = std::min(maxStepSize, endTime - t);
         double dt = std::min(maxStepSize, startStepSize * 2.0);
 
-        Eigen::Vector3d p1 = positionAtTime(t + dt);
-        Eigen::Vector3d v1 = velocityAtTime(t + dt);
+        // Eigen::Vector3d p1 = positionAtTime(t + dt);
+        // Eigen::Vector3d v1 = velocityAtTime(t + dt);
+        Eigen::Vector3d p1, v1;
+        tryComputeState(this, t, p1, v1);
 
         double tmid = t + dt / 2.0;
         Eigen::Vector3d pTest = positionAtTime(tmid);
@@ -219,8 +235,9 @@ void Orbit::adaptiveSample(double startTime, double endTime, OrbitSampleProc& pr
             {
                 dt /= stepFactor;
 
-                p1 = positionAtTime(t + dt);
-                v1 = velocityAtTime(t + dt);
+                // p1 = positionAtTime(t + dt);
+                // v1 = velocityAtTime(t + dt);
+                tryComputeState(this, t, p1, v1);
 
                 tmid = t + dt / 2.0;
                 pTest = positionAtTime(tmid);
@@ -239,8 +256,9 @@ void Orbit::adaptiveSample(double startTime, double endTime, OrbitSampleProc& pr
             {
                 dt *= stepFactor;
 
-                p1 = positionAtTime(t + dt);
-                v1 = velocityAtTime(t + dt);
+                // p1 = positionAtTime(t + dt);
+                // v1 = velocityAtTime(t + dt);
+                tryComputeState(this, t, p1, v1);
 
                 tmid = t + dt / 2.0;
                 pTest = positionAtTime(tmid);
@@ -346,6 +364,14 @@ Eigen::Vector3d EllipticalOrbit::velocityAtE(double E, double meanMotion) const
     return Eigen::Vector3d(v.x(), v.z(), -v.y());
 }
 
+std::pair<Eigen::Vector3d, Eigen::Vector3d> EllipticalOrbit::computeStateAtTime(double t) const {
+    t = t - epoch;
+    double meanMotion = 2.0 * celestia::numbers::pi / period;
+    double meanAnomaly = meanAnomalyAtEpoch + t * meanMotion;
+    double E = eccentricAnomaly(meanAnomaly);
+
+    return {positionAtE(E), velocityAtE(E, meanMotion)};
+}
 
 // Return the offset from the center
 Eigen::Vector3d EllipticalOrbit::positionAtTime(double t) const
@@ -410,15 +436,41 @@ HyperbolicOrbit::HyperbolicOrbit(const astro::KeplerElements& _elements, double 
 }
 
 
+// double HyperbolicOrbit::eccentricAnomaly(double M) const
+// {
+//     // Laguerre-Conway method for hyperbolic (ecc > 1) orbits.
+//     if (M == 0.0)
+//         return 0.0;
+//     double E = std::log(2.0 * std::abs(M) / eccentricity + 1.85);
+//     return std::copysign(math::solve_iteration_fixed(SolveKeplerLaguerreConwayHyp(eccentricity, std::abs(M)), E, 30).first, M);
+// }
+
 double HyperbolicOrbit::eccentricAnomaly(double M) const
 {
-    // Laguerre-Conway method for hyperbolic (ecc > 1) orbits.
     if (M == 0.0)
         return 0.0;
-    double E = std::log(2.0 * std::abs(M) / eccentricity + 1.85);
-    return std::copysign(math::solve_iteration_fixed(SolveKeplerLaguerreConwayHyp(eccentricity, std::abs(M)), E, 30).first, M);
-}
 
+    // Quick linear approximation near pericenter
+    if (std::abs(M) < 1e-6)
+        return M / (eccentricity - 1);
+
+    double E = std::log(2.0 * std::abs(M) / eccentricity + 1.85);  // Initial guess
+    E = std::copysign(E, M);  // Restore sign
+
+    // Newton-Raphson iteration
+    for (int i = 0; i < 10; ++i) {
+        double sinhE = std::sinh(E);
+        double coshE = std::cosh(E);
+        double f = eccentricity * sinhE - E - M;
+        double f_prime = eccentricity * coshE - 1;
+        double delta = f / f_prime;
+        E -= delta;
+        if (std::abs(delta) < 1e-12)
+            break;
+    }
+
+    return E;
+}
 
 // Compute the position at the specified eccentric
 // anomaly E.
@@ -448,6 +500,13 @@ Eigen::Vector3d HyperbolicOrbit::velocityAtE(double E) const
 
     // Convert to Celestia's coordinate system
     return Eigen::Vector3d(v.x(), v.z(), -v.y());
+}
+
+std::pair<Eigen::Vector3d, Eigen::Vector3d> HyperbolicOrbit::computeStateAtTime(double t) const {
+    double dt = t - epoch;
+    double M = meanAnomalyAtEpoch + dt * meanMotion;
+    double E = eccentricAnomaly(M);
+    return {positionAtE(E), velocityAtE(E)};
 }
 
 
