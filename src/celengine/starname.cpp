@@ -572,45 +572,55 @@ StarNameDatabase::loadCrossIndex(StarCatalog catalog, std::istream& in)
     if (!checkCrossIndexHeader(in))
         return false;
 
-    CrossIndex& xindex = crossIndices[catalogIndex];
-    xindex = {};
+    // — 1) Compute total records & reserve once —
+    std::streampos dataStart = in.tellg();              // immediately after header
+    in.seekg(0, std::ios::end);
+    std::streampos dataEnd   = in.tellg();
+    in.seekg(dataStart);
 
-    constexpr std::uint32_t BUFFER_RECORDS = UINT32_C(4096) / sizeof(CrossIndexRecord);
-    std::vector<char> buffer(sizeof(CrossIndexRecord) * BUFFER_RECORDS);
-    bool hasMoreRecords = true;
-    while (hasMoreRecords)
+    size_t totalBytes = static_cast<size_t>(dataEnd - dataStart);
+    size_t totalRecs  = totalBytes / sizeof(CrossIndexRecord);
+    CrossIndex& xindex = crossIndices[catalogIndex];
+    xindex.clear();
+    xindex.reserve(totalRecs);
+
+    // — 2) Use a 1 MiB buffer instead of 4 KiB —
+    static constexpr size_t BUF_BYTES = 1<<20; // 1 MiB
+    std::vector<char> buffer(BUF_BYTES);
+
+    bool   hasMore = true;
+    while (hasMore)
     {
-        std::size_t remainingRecords = BUFFER_RECORDS;
-        in.read(buffer.data(), buffer.size()); /* Flawfinder: ignore */
+        in.read(buffer.data(), buffer.size());
         if (in.bad())
         {
             GetLogger()->error(_("Loading cross index failed\n"));
-            xindex = {};
+            xindex.clear();
             return false;
         }
-        if (in.eof())
-        {
-            auto bytesRead = static_cast<std::uint32_t>(in.gcount());
-            remainingRecords = bytesRead / sizeof(CrossIndexRecord);
-            // disallow partial records
-            if (bytesRead % sizeof(CrossIndexRecord) != 0)
-            {
-                GetLogger()->error(_("Loading cross index failed - unexpected EOF\n"));
-                xindex = {};
-                return false;
-            }
 
-            hasMoreRecords = false;
+        size_t bytesRead = static_cast<size_t>(in.gcount());
+        if (bytesRead == 0)
+            break;
+
+        size_t recsThisPass = bytesRead / sizeof(CrossIndexRecord);
+        if (bytesRead % sizeof(CrossIndexRecord) != 0)
+        {
+            GetLogger()->error(_("Loading cross index failed - unexpected EOF\n"));
+            xindex.clear();
+            return false;
         }
 
-        xindex.reserve(xindex.size() + remainingRecords);
-
         const char* ptr = buffer.data();
-        while (remainingRecords-- > 0)
+        for (size_t i = 0; i < recsThisPass; ++i)
         {
             CrossIndexEntry& ent = xindex.emplace_back();
-            ent.catalogNumber = util::fromMemoryLE<AstroCatalog::IndexNumber>(ptr + offsetof(CrossIndexRecord, catalogNumber));
-            ent.celCatalogNumber = util::fromMemoryLE<AstroCatalog::IndexNumber>(ptr + offsetof(CrossIndexRecord, celCatalogNumber));
+            ent.catalogNumber    = util::fromMemoryLE<AstroCatalog::IndexNumber>(
+                                      ptr + offsetof(CrossIndexRecord, catalogNumber)
+                                   );
+            ent.celCatalogNumber = util::fromMemoryLE<AstroCatalog::IndexNumber>(
+                                      ptr + offsetof(CrossIndexRecord, celCatalogNumber)
+                                   );
             ptr += sizeof(CrossIndexRecord);
         }
     }
@@ -618,6 +628,8 @@ StarNameDatabase::loadCrossIndex(StarCatalog catalog, std::istream& in)
     GetLogger()->debug("Loaded xindex in {} ms\n", timer.getTime());
 
     std::sort(xindex.begin(), xindex.end(),
-              [](const auto& lhs, const auto& rhs) { return lhs.catalogNumber < rhs.catalogNumber; });
+              [](auto const& a, auto const& b){
+                  return a.catalogNumber < b.catalogNumber;
+              });
     return true;
 }
