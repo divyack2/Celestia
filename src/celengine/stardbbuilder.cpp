@@ -785,24 +785,37 @@ StarDatabaseBuilder::finish()
     // the barycenters have been resolved, and these are required when building
     // the octree.  This will only rarely cause a problem, but it still needs
     // to be addressed.
-    for (const auto [starIdx, barycenterIdx] : barycenters)
-    {
+    // 1) Build an indexable array of barycenters
+    std::vector<std::pair<unsigned int,unsigned int>> baryVec;
+    baryVec.reserve(barycenters.size());
+    for (auto const& p : barycenters)
+        baryVec.emplace_back(p.first, p.second);
+
+    int baryN = (int)baryVec.size();
+    #pragma omp parallel for
+    for (int i = 0; i < baryN; ++i) {
+        auto [starIdx, barycenterIdx] = baryVec[i];
         Star* star = starDB->find(starIdx);
         Star* barycenter = starDB->find(barycenterIdx);
-        assert(star != nullptr);
-        assert(barycenter != nullptr);
-        if (star != nullptr && barycenter != nullptr)
-        {
-            StarDetails::setOrbitBarycenter(star->details, barycenter);
-            StarDetails::addOrbitingStar(barycenter->details, star);
-        }
+        assert(star && barycenter);
+        StarDetails::setOrbitBarycenter(star->details, barycenter);
+        StarDetails::addOrbitingStar(barycenter->details, star);
     }
 
-    for (const auto& [catalogNumber, category] : categories)
-    {
+    // 2) Build an indexable array of categories
+    std::vector<std::pair<unsigned int, UserCategoryId>> categoriesVec;
+    categoriesVec.reserve(categories.size());
+    for (auto const& p : categories)
+        categoriesVec.emplace_back(p.first, p.second);
+
+    int catN = (int)categoriesVec.size();
+    #pragma omp parallel for
+    for (int i = 0; i < catN; ++i) {
+        auto [catalogNumber, category] = categoriesVec[i];
         Star* star = starDB->find(catalogNumber);
         UserCategory::addObject(star, category);
     }
+
 
     return std::move(starDB);
 }

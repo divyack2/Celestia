@@ -161,3 +161,7 @@ add_library(celengine OBJECT ${CELENGINE_SOURCES})
 
 gperf_add_table(celengine location.gperf location.cpp 4)
 gperf_add_table(celengine solarsys.gperf solarsys.cpp 4)
+
+if (OpenMP_CXX_FOUND)
+  target_link_libraries(celengine PRIVATE OpenMP::OpenMP_CXX)
+endif()
