@@ -20,6 +20,8 @@
 #include <celutil/gettext.h>
 #include <celutil/logger.h>
 
+// #include <omp.h>
+
 namespace celestia
 {
 
@@ -104,6 +106,7 @@ loadStars(const CelestiaConfig &config, ProgressNotifier *progressNotifier)
 
     // Next, read any ASCII star catalog files specified in the StarCatalogs list.
     fs::path empty;
+    // #pragma omp parallel for
     for (const auto &file : config.paths.starCatalogFiles)
         loader.process(file, empty);
 

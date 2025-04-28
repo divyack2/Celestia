@@ -74,6 +74,11 @@ option(USE_MESHOPTIMIZER  "Use meshoptimizer (Default: off)" OFF)
 option(USE_WEFFCPP        "Use the -Weffc++ option when compiling with GCC (Default: off)" OFF)
 option(LEGACY_OPENGL_LIBS "Use legacy OpenGL libraries instead of glvnd library (Default: off)" OFF)
 
+set(CMAKE_C_FLAGS_RELEASE
+    "${CMAKE_C_FLAGS_RELEASE} -O2 -march=native -ftree-vectorize -fno-unroll-loops")
+set(CMAKE_CXX_FLAGS_RELEASE
+    "${CMAKE_CXX_FLAGS_RELEASE} -O2 -march=native -ftree-vectorize -fno-unroll-loops")
+
 # Prefer GLVND or "legacy" OpenGL library (libOpenGL.so vs libGL.so)
 if(LEGACY_OPENGL_LIBS)
   set(OpenGL_GL_PREFERENCE LEGACY)
@@ -539,3 +544,5 @@ if(ENABLE_TESTS)
   include(CTest)
   add_subdirectory(test)
 endif()
+
+find_package(OpenMP REQUIRED COMPONENTS CXX)
