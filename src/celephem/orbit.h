@@ -10,6 +10,7 @@
 #pragma once
 
 #include <memory>
+#include <deque>
 
 #include <Eigen/Core>
 
@@ -92,6 +93,10 @@ private:
     double epoch;
 
     Eigen::Matrix3d orbitPlaneRotation;
+
+    // Kepler cache: fixed-size buffer
+    mutable std::pair<double,double> keplerCache[2];
+    mutable int keplerCacheSize = 0;
 };
 
 

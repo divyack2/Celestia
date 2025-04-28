@@ -53,7 +53,7 @@ struct SolveKeplerFunc1
 
     SolveKeplerFunc1(double _ecc, double _M) : ecc(_ecc), M(_M) {};
 
-    double operator()(double x) const
+    inline double operator()(double x) const
     {
         return M + ecc * std::sin(x);
     }
@@ -70,7 +70,7 @@ struct SolveKeplerFunc2
 
     SolveKeplerFunc2(double _ecc, double _M) : ecc(_ecc), M(_M) {};
 
-    double operator()(double x) const
+    inline double operator()(double x) const
     {
         double s;
         double c;
@@ -87,7 +87,7 @@ struct SolveKeplerLaguerreConway
 
     SolveKeplerLaguerreConway(double _ecc, double _M) : ecc(_ecc), M(_M) {};
 
-    double operator()(double x) const
+    inline double operator()(double x) const
     {
         double s;
         double c;
@@ -286,30 +286,37 @@ EllipticalOrbit::EllipticalOrbit(const astro::KeplerElements& _elements, double 
 }
 
 
-double EllipticalOrbit::eccentricAnomaly(double M) const
-{
-    if (eccentricity == 0.0)
-    {
-        // Circular orbit
-        return M;
+double EllipticalOrbit::eccentricAnomaly(double M) const {
+    if (eccentricity == 0.0) return M;
+    // check cache
+    for (int i = 0; i < keplerCacheSize; ++i) {
+        if (std::abs(M - keplerCache[i].first) < 1e-8)
+            return keplerCache[i].second;
     }
+    // initial guess
+    double E0;
     if (eccentricity < 0.2)
-    {
-        // Low eccentricity, so use the standard iteration technique
-        return math::solve_iteration_fixed(SolveKeplerFunc1(eccentricity, M), M, 5).first;
+        E0 = M;
+    else if (eccentricity < 0.9)
+        E0 = M + eccentricity*std::sin(M)/(1.0 - eccentricity*std::cos(M));
+    else
+        E0 = M + 0.85*eccentricity*math::sign(std::sin(M));
+    // solve
+    double E;
+    if (eccentricity < 0.2)
+        E = math::solve_iteration_fixed(SolveKeplerFunc1(eccentricity, M), E0, 5).first;
+    else if (eccentricity < 0.9)
+        E = math::solve_iteration_fixed(SolveKeplerFunc2(eccentricity, M), E0, 6).first;
+    else
+        E = math::solve_iteration_fixed(SolveKeplerLaguerreConway(eccentricity, M), E0, 8).first;
+    // update cache (LRU)
+    if (keplerCacheSize < 2) {
+        keplerCache[keplerCacheSize++] = {M, E};
+    } else {
+        keplerCache[0] = keplerCache[1];
+        keplerCache[1] = {M, E};
     }
-    if (eccentricity < 0.9)
-    {
-        // Higher eccentricity elliptical orbit; use a more complex but
-        // much faster converging iteration.
-        return math::solve_iteration_fixed(SolveKeplerFunc2(eccentricity, M), M, 6).first;
-    }
-
-    // Extremely stable Laguerre-Conway method for solving Kepler's
-    // equation.  Only use this for high-eccentricity orbits, as it
-    // requires more calcuation.
-    double E = M + 0.85 * eccentricity * math::sign(std::sin(M));
-    return math::solve_iteration_fixed(SolveKeplerLaguerreConway(eccentricity, M), E, 8).first;
+    return E;
 }
 
 
