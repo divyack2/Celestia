@@ -9,7 +9,8 @@ set(UNIT_TEST_SOURCES
   ranges_test.cpp
   stellarclass_test.cpp
   strnatcmp_test.cpp
-  tokenizer_test.cpp)
+  tokenizer_test.cpp
+  orbit_ecc_anomaly_test.cpp)
 
 #if(NOT HAVE_FLOAT_CHARCONV)
   list(APPEND UNIT_TEST_SOURCES charconv_compat_test.cpp)

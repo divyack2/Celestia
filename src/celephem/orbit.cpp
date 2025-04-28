@@ -418,6 +418,10 @@ HyperbolicOrbit::HyperbolicOrbit(const astro::KeplerElements& _elements, double 
 //     return std::copysign(math::solve_iteration_fixed(SolveKeplerLaguerreConwayHyp(eccentricity, std::abs(M)), E, 30).first, M);
 // }
 
+// double HyperbolicOrbit::eccentricAnomalyHelper(double M) {
+//     return eccentricAnomaly(M);
+// }
+
 double HyperbolicOrbit::eccentricAnomaly(double M) const
 {
     if (M == 0.0)
