@@ -32,25 +32,38 @@ CatalogLoader<Universe>::load(std::istream &in, const fs::path &dir)
 void
 loadSSO(const CelestiaConfig &config, ProgressNotifier *progressNotifier, Universe *universe)
 {
-    auto solarSystem = std::make_unique<SolarSystemCatalog>();
-    universe->setSolarSystemCatalog(std::move(solarSystem));
+   auto solarSystem = std::make_unique<SolarSystemCatalog>();
+   universe->setSolarSystemCatalog(std::move(solarSystem));
 
-    // TRANSLATORS: this is a part of phrases "Loading {} catalog", "Skipping {} catalog"
-    const char *typeDesc = C_("catalog", "solar system");
 
-    SolarSystemLoader loader(universe,
-                             typeDesc,
-                             ContentType::CelestiaCatalog,
-                             progressNotifier,
-                             config.paths.skipExtras);
+   const char *typeDesc = C_("catalog", "solar system");
 
-    // First read the solar system files listed individually in the config file.
-    fs::path empty;
-    for (const auto &file : config.paths.solarSystemFiles)
-        loader.process(file, empty);
 
-    // Next, read all the solar system files in the extras directories
-    loader.loadExtras(config.paths.extrasDirs);
+   SolarSystemLoader loader(universe,
+                            typeDesc,
+                            ContentType::CelestiaCatalog,
+                            progressNotifier,
+                            config.paths.skipExtras);
+
+
+   // First read the solar system files listed individually in the config file.
+   fs::path empty;
+
+
+   // Parallelize the per-file processing:
+   int n = static_cast<int>(config.paths.solarSystemFiles.size());
+
+
+   #pragma omp parallel for
+   for (int i = 0; i < n; ++i) {
+       const fs::path &file = config.paths.solarSystemFiles[i];
+       loader.process(file, empty);
+   }
+
+
+   // Next, read all the solar system files in the extras directories
+   loader.loadExtras(config.paths.extrasDirs);
 }
+
 
 } // namespace celestia
