@@ -108,7 +108,7 @@ public:
     double getBoundingRadius() const override;
     bool isPeriodic() const override;
     void getValidRange(double& begin, double& end) const override;
-    // double eccentricAnomalyHelper(double M);
+    double eccentricAnomalyHelper(double M);
 
 private:
     double eccentricAnomaly(double) const;
