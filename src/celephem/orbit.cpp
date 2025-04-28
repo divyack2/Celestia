@@ -272,7 +272,6 @@ Eigen::Vector3d Orbit::velocityAtTime(double tdb) const
 EllipticalOrbit::EllipticalOrbit(const astro::KeplerElements& _elements, double _epoch) :
     semiMajorAxis(_elements.semimajorAxis),
     eccentricity(_elements.eccentricity),
-    meanAnomalyAtEpoch(_elements.meanAnomaly),
     period(_elements.period),
     epoch(_epoch),
     orbitPlaneRotation((math::ZRotation(_elements.longAscendingNode) *
@@ -283,33 +282,38 @@ EllipticalOrbit::EllipticalOrbit(const astro::KeplerElements& _elements, double 
     assert(semiMajorAxis >= 0.0);
     assert(period != 0.0);
     semiMinorAxis = semiMajorAxis * std::sqrt(1.0 - math::square(eccentricity));
+
+    // Hoist mean motion
+    meanMotion_ = 2.0 * celestia::numbers::pi / period;
+
+    // Pre-select Kepler solver strategy
+    if (eccentricity == 0.0) {
+        solveKepler_ = [](double M) { return M; };
+    }
+    else if (eccentricity < 0.2) {
+        solveKepler_ = [this](double M) {
+            return math::solve_iteration_fixed(SolveKeplerFunc1(eccentricity, M), M, 5).first;
+        };
+    }
+    else if (eccentricity < 0.9) {
+        solveKepler_ = [this](double M) {
+            return math::solve_iteration_fixed(SolveKeplerFunc2(eccentricity, M), M, 6).first;
+        };
+    }
+    else {
+        solveKepler_ = [this](double M) {
+            // initial guess for high-eccentricity
+            double E0 = M + 0.85 * eccentricity * math::sign(std::sin(M));
+            return math::solve_iteration_fixed(SolveKeplerLaguerreConway(eccentricity, M), E0, 8).first;
+        };
+    }
 }
 
 
 double EllipticalOrbit::eccentricAnomaly(double M) const
 {
-    if (eccentricity == 0.0)
-    {
-        // Circular orbit
-        return M;
-    }
-    if (eccentricity < 0.2)
-    {
-        // Low eccentricity, so use the standard iteration technique
-        return math::solve_iteration_fixed(SolveKeplerFunc1(eccentricity, M), M, 5).first;
-    }
-    if (eccentricity < 0.9)
-    {
-        // Higher eccentricity elliptical orbit; use a more complex but
-        // much faster converging iteration.
-        return math::solve_iteration_fixed(SolveKeplerFunc2(eccentricity, M), M, 6).first;
-    }
-
-    // Extremely stable Laguerre-Conway method for solving Kepler's
-    // equation.  Only use this for high-eccentricity orbits, as it
-    // requires more calcuation.
-    double E = M + 0.85 * eccentricity * math::sign(std::sin(M));
-    return math::solve_iteration_fixed(SolveKeplerLaguerreConway(eccentricity, M), E, 8).first;
+    // Single call: no branches here
+    return solveKepler_(M);
 }
 
 
@@ -347,26 +351,21 @@ Eigen::Vector3d EllipticalOrbit::velocityAtE(double E, double meanMotion) const
 }
 
 
-// Return the offset from the center
+// Update positionAtTime / velocityAtTime to use hoisted meanMotion_
 Eigen::Vector3d EllipticalOrbit::positionAtTime(double t) const
 {
-    t = t - epoch;
-    double meanMotion = 2.0 * celestia::numbers::pi / period;
-    double meanAnomaly = meanAnomalyAtEpoch + t * meanMotion;
+    double dt = t - epoch;
+    double meanAnomaly = meanAnomalyAtEpoch + dt * meanMotion_;
     double E = eccentricAnomaly(meanAnomaly);
-
     return positionAtE(E);
 }
 
-
 Eigen::Vector3d EllipticalOrbit::velocityAtTime(double t) const
 {
-    t = t - epoch;
-    double meanMotion = 2.0 * celestia::numbers::pi / period;
-    double meanAnomaly = meanAnomalyAtEpoch + t * meanMotion;
+    double dt = t - epoch;
+    double meanAnomaly = meanAnomalyAtEpoch + dt * meanMotion_;
     double E = eccentricAnomaly(meanAnomaly);
-
-    return velocityAtE(E, meanMotion);
+    return velocityAtE(E, meanMotion_);
 }
 
 

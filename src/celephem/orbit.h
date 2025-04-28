@@ -92,6 +92,10 @@ private:
     double epoch;
 
     Eigen::Matrix3d orbitPlaneRotation;
+
+    // Hoisted computations:
+    double meanMotion_;  // = 2pi / period
+    std::function<double(double)> solveKepler_;  // pre-selected solver
 };
 
 
