@@ -330,6 +330,8 @@ find_package(Boost REQUIRED)
 link_libraries(Boost::boost)
 add_definitions(-DBOOST_NO_EXCEPTIONS)
 
+find_package(OpenMP REQUIRED COMPONENTS CXX)
+
 #[[
 get_cmake_property(_variableNames VARIABLES)
 list (SORT _variableNames)
